@@ -1,0 +1,227 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model User {
+  id                String   @id @default(uuid())
+  email             String   @unique
+  name              String
+  password          String
+  avatar            String?
+  role              String   @default("student")
+  emailVerified     Boolean  @default(false)
+  emailVerifyToken  String?  @unique
+  resetToken        String?  @unique
+  resetTokenExpiry  DateTime?
+  lastLoginAt       DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  datasets  Dataset[]
+  reports   Report[]
+  activities Activity[]
+  sessions  Session[]
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  userAgent String?
+  ipAddress String?
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+}
+
+model Activity {
+  id        String   @id @default(uuid())
+  userId    String
+  action    String
+  entity    String
+  entityId  String?
+  details   String?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+}
+
+model Dataset {
+  id             String   @id @default(uuid())
+  userId         String
+  name           String
+  description    String?
+  tags           String   @default("[]")
+  category       String?
+  fileName       String
+  filePath       String
+  fileSize       Int
+  rowCount       Int      @default(0)
+  columnCount    Int      @default(0)
+  mimeType       String
+  encoding       String   @default("utf-8")
+  delimiter      String   @default(",")
+  status         String   @default("uploaded")
+  qualityScore   Float?
+  currentVersion Int      @default(1)
+  isFavorite     Boolean  @default(false)
+  isArchived     Boolean  @default(false)
+  targetColumn   String?
+  source         String?
+  notes          String?
+  project        String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user     User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  versions DatasetVersion[]
+  reports  Report[]
+  metadata MetadataField[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([isFavorite])
+  @@index([isArchived])
+  @@index([category])
+}
+
+model DatasetVersion {
+  id          String   @id @default(uuid())
+  datasetId   String
+  version     Int
+  fileName    String
+  filePath    String
+  fileSize    Int
+  rowCount    Int      @default(0)
+  columnCount Int      @default(0)
+  encoding    String   @default("utf-8")
+  createdAt   DateTime @default(now())
+
+  dataset        Dataset         @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+  profile        DatasetProfile?
+  columnProfiles ColumnProfile[]
+
+  @@unique([datasetId, version])
+  @@index([datasetId])
+}
+
+model DatasetProfile {
+  id                String   @id @default(uuid())
+  versionId         String   @unique
+  totalRows         Int
+  totalColumns      Int
+  totalMissingCells Int      @default(0)
+  missingPercentage Float    @default(0)
+  duplicateRows     Int      @default(0)
+  duplicatePercentage Float  @default(0)
+  memoryUsageBytes  Int      @default(0)
+  typeBreakdown     String   @default("{}")
+  qualityScore      Float    @default(0)
+  qualityBreakdown  String   @default("{}")
+  correlationMatrix String?
+  sheetNames        String?
+  createdAt         DateTime @default(now())
+
+  version DatasetVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+}
+
+model ColumnProfile {
+  id              String   @id @default(uuid())
+  versionId       String
+  columnName      String
+  columnIndex     Int
+  detectedType    String
+  nonNullCount    Int
+  nullCount       Int
+  nullPercentage  Float
+  uniqueCount     Int
+  isConstant      Boolean  @default(false)
+  isHighCardinality Boolean @default(false)
+  isIdentifier    Boolean  @default(false)
+
+  mean            Float?
+  median          Float?
+  mode            String?
+  std             Float?
+  min             String?
+  max             String?
+  q25             Float?
+  q50             Float?
+  q75             Float?
+  skewness        Float?
+  kurtosis        Float?
+  sum             Float?
+  zeroCount       Int?
+  negativeCount   Int?
+  positiveCount   Int?
+
+  minLength       Int?
+  maxLength       Int?
+  avgLength       Float?
+  emptyCount      Int?
+  whitespaceCount Int?
+  patternSummary  String?
+
+  dateMin         String?
+  dateMax         String?
+  dateRangeDays   Int?
+
+  topValues       String?
+  histogram       String?
+  outliers        String?
+  valueDistribution String?
+
+  createdAt       DateTime @default(now())
+
+  version DatasetVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@index([versionId])
+  @@index([columnName])
+}
+
+model Report {
+  id        String   @id @default(uuid())
+  userId    String
+  datasetId String
+  versionId String?
+  fileName  String
+  filePath  String
+  fileSize  Int      @default(0)
+  format    String   @default("pdf")
+  status    String   @default("pending")
+  createdAt DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dataset Dataset @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([datasetId])
+}
+
+model MetadataField {
+  id        String   @id @default(uuid())
+  datasetId String
+  key       String
+  value     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  dataset Dataset @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+
+  @@unique([datasetId, key])
+  @@index([datasetId])
+}
