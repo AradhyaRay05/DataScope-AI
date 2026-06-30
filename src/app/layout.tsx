@@ -1,10 +1,20 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { Providers } from "./providers";
 
 export const metadata: Metadata = {
   title: "DataScope AI - Dataset Intelligence Platform",
   description:
     "Upload CSV or Excel datasets and instantly generate intelligent profiling, feature statistics, missing value analysis, correlation insights, interactive visualizations, data quality scores, and exportable reports.",
+  keywords: [
+    "dataset analysis",
+    "data profiling",
+    "data quality",
+    "machine learning",
+    "data science",
+  ],
+  authors: [{ name: "DataScope AI" }],
+  robots: "index, follow",
 };
 
 export default function RootLayout({
@@ -14,7 +24,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="h-full antialiased">
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <Providers>{children}</Providers>
+      </body>
     </html>
   );
 }
