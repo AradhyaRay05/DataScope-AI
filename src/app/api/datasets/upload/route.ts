@@ -3,21 +3,20 @@ import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/auth";
 import { profileDataset } from "@/engine/profiler";
 import { logActivity } from "@/lib/activity";
+import { logger } from "@/lib/logger";
+import { AppError, ErrorCode, createErrorResponse } from "@/lib/errors";
+import { validateUploadFile, validateDatasetName, saveUploadedFile, handleProfilingError } from "@/lib/uploadHandler";
+import { notifyDatasetProfiled, notifyDatasetFailed } from "@/lib/notifications";
+import { handleDbError } from "@/lib/dbErrorHandler";
 import path from "path";
-import fs from "fs";
 import { v4 as uuidv4 } from "uuid";
 
-const MAX_FILE_SIZE = 100 * 1024 * 1024;
-const ALLOWED_EXTENSIONS = new Set([".csv", ".xlsx", ".xls"]);
-
 export async function POST(request: NextRequest) {
+  const requestId = crypto.randomUUID();
   try {
     const session = await getSession();
     if (!session) {
-      return NextResponse.json(
-        { error: "Not authenticated." },
-        { status: 401 }
-      );
+      throw new AppError(ErrorCode.AUTH_REQUIRED, undefined, { requestId });
     }
 
     const formData = await request.formData();
@@ -32,154 +31,76 @@ export async function POST(request: NextRequest) {
     const project = (formData.get("project") as string) || null;
 
     if (!file) {
-      return NextResponse.json(
-        { error: "Please select a file to upload." },
-        { status: 400 }
-      );
+      throw new AppError(ErrorCode.MISSING_FIELD, "No file provided.", { requestId });
     }
 
-    if (file.size === 0) {
-      return NextResponse.json(
-        { error: "The uploaded file is empty." },
-        { status: 400 }
-      );
-    }
-
-    if (file.size > MAX_FILE_SIZE) {
-      return NextResponse.json(
-        {
-          error: `File exceeds the 100MB size limit. Your file is ${(file.size / 1024 / 1024).toFixed(1)}MB.`,
-        },
-        { status: 400 }
-      );
-    }
-
-    const ext = path.extname(file.name).toLowerCase();
-    if (!ALLOWED_EXTENSIONS.has(ext)) {
-      return NextResponse.json(
-        {
-          error: `Unsupported file format "${ext}". Please upload a CSV (.csv), Excel (.xlsx), or Excel (.xls) file.`,
-        },
-        { status: 400 }
-      );
-    }
-
-    const datasetName = name?.trim() || file.name.replace(/\.[^/.]+$/, "");
-    if (datasetName.length === 0) {
-      return NextResponse.json(
-        { error: "Dataset name is required." },
-        { status: 400 }
-      );
-    }
-    if (datasetName.length > 200) {
-      return NextResponse.json(
-        { error: "Dataset name must be 200 characters or fewer." },
-        { status: 400 }
-      );
-    }
+    validateUploadFile(file);
+    const datasetName = validateDatasetName(name || file.name.replace(/\.[^/.]+$/, ""));
 
     const existingDataset = await prisma.dataset.findFirst({
-      where: {
-        userId: session.userId,
-        name: datasetName,
-        isArchived: false,
-      },
+      where: { userId: session.userId, name: datasetName, isArchived: false },
     });
 
-    const tags = tagsRaw
-      .split(",")
-      .map((t) => t.trim())
-      .filter(Boolean)
-      .slice(0, 20);
-
+    const tags = tagsRaw.split(",").map((t) => t.trim()).filter(Boolean).slice(0, 20);
     const datasetId = uuidv4();
-    const uploadDir = path.join(
-      process.cwd(),
-      "data",
-      "uploads",
-      session.userId,
-      datasetId
-    );
-    fs.mkdirSync(uploadDir, { recursive: true });
-
-    const filePath = path.join(uploadDir, file.name);
     const buffer = Buffer.from(await file.arrayBuffer());
-    fs.writeFileSync(filePath, buffer);
 
-    const mimeType =
-      file.type ||
-      (ext === ".csv"
-        ? "text/csv"
-        : ext === ".xlsx"
-          ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-          : "application/vnd.ms-excel");
+    const { filePath } = saveUploadedFile(buffer, file.name, session.userId, datasetId);
 
-    const versionNumber = existingDataset
-      ? existingDataset.currentVersion + 1
-      : 1;
+    const ext = path.extname(file.name).toLowerCase();
+    const mimeType = file.type || (ext === ".csv" ? "text/csv" : ext === ".xlsx"
+      ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      : "application/vnd.ms-excel");
+    const versionNumber = existingDataset ? existingDataset.currentVersion + 1 : 1;
 
-    const dataset = await prisma.dataset.create({
-      data: {
-        id: datasetId,
-        userId: session.userId,
-        name: datasetName,
-        description: description || null,
-        tags: JSON.stringify(tags),
-        category: category || null,
-        fileName: file.name,
-        filePath,
-        fileSize: file.size,
-        mimeType,
-        status: "profiling",
-        currentVersion: versionNumber,
-        targetColumn: targetColumn || null,
-        source: source || null,
-        notes: notes || null,
-        project: project || null,
-      },
+    let dataset;
+    try {
+      dataset = await prisma.dataset.create({
+        data: {
+          id: datasetId, userId: session.userId, name: datasetName,
+          description: description || null, tags: JSON.stringify(tags),
+          category: category || null, fileName: file.name, filePath,
+          fileSize: file.size, mimeType, status: "profiling",
+          currentVersion: versionNumber, targetColumn: targetColumn || null,
+          source: source || null, notes: notes || null, project: project || null,
+        },
+      });
+    } catch (error) {
+      handleDbError(error, "create dataset");
+    }
+
+    try {
+      await prisma.datasetVersion.create({
+        data: {
+          datasetId: dataset.id, version: versionNumber,
+          fileName: file.name, filePath, fileSize: file.size, encoding: "utf-8",
+        },
+      });
+    } catch (error) {
+      handleDbError(error, "create dataset version");
+    }
+
+    logger.upload("started", {
+      userId: session.userId, datasetId: dataset.id,
+      fileName: file.name, fileSize: file.size,
     });
 
-    await prisma.datasetVersion.create({
-      data: {
-        datasetId: dataset.id,
-        version: versionNumber,
-        fileName: file.name,
-        filePath,
-        fileSize: file.size,
-        encoding: "utf-8",
-      },
-    });
+    profileDatasetAsync(dataset.id, filePath, mimeType, versionNumber, session.userId, datasetName);
 
-    profileDatasetAsync(dataset.id, filePath, mimeType, versionNumber);
-
-    await logActivity(
-      session.userId,
-      "dataset.upload",
-      "dataset",
-      dataset.id,
-      `${datasetName} (${file.name})`
-    );
+    await logActivity(session.userId, "dataset.upload", "dataset", dataset.id, `${datasetName} (${file.name})`);
 
     return NextResponse.json(
       {
-        dataset: {
-          id: dataset.id,
-          name: dataset.name,
-          status: "profiling",
-          isDuplicate: !!existingDataset,
-        },
+        dataset: { id: dataset.id, name: dataset.name, status: "profiling", isDuplicate: !!existingDataset },
         message: existingDataset
           ? `Upload complete. New version (${versionNumber}) of "${datasetName}" is being profiled.`
           : "Upload complete. Profiling in progress...",
       },
-      { status: 201 }
+      { status: 201, headers: { "X-Request-Id": requestId } }
     );
   } catch (error) {
-    console.error("Upload error:", error);
-    return NextResponse.json(
-      { error: "Internal server error." },
-      { status: 500 }
-    );
+    const { body, status } = createErrorResponse(error, requestId);
+    return NextResponse.json(body, { status, headers: { "X-Request-Id": requestId } });
   }
 }
 
@@ -187,15 +108,23 @@ async function profileDatasetAsync(
   datasetId: string,
   filePath: string,
   mimeType: string,
-  versionNumber: number
+  versionNumber: number,
+  userId: string,
+  datasetName: string
 ) {
+  const startTime = performance.now();
   try {
     const profile = await profileDataset(filePath, mimeType);
+    const duration = Math.round(performance.now() - startTime);
+
+    logger.profiling("completed", {
+      datasetId, duration,
+      rows: profile.totalRows, columns: profile.totalColumns,
+    });
 
     const version = await prisma.datasetVersion.findFirst({
       where: { datasetId, version: versionNumber },
     });
-
     if (!version) return;
 
     await prisma.datasetProfile.create({
@@ -211,12 +140,8 @@ async function profileDatasetAsync(
         typeBreakdown: JSON.stringify(profile.typeBreakdown),
         qualityScore: profile.qualityScore,
         qualityBreakdown: JSON.stringify(profile.qualityBreakdown),
-        correlationMatrix: profile.correlationMatrix
-          ? JSON.stringify(profile.correlationMatrix)
-          : null,
-        sheetNames: profile.sheetNames
-          ? JSON.stringify(profile.sheetNames)
-          : null,
+        correlationMatrix: profile.correlationMatrix ? JSON.stringify(profile.correlationMatrix) : null,
+        sheetNames: profile.sheetNames ? JSON.stringify(profile.sheetNames) : null,
       },
     });
 
@@ -261,9 +186,7 @@ async function profileDatasetAsync(
           topValues: col.topValues ? JSON.stringify(col.topValues) : null,
           histogram: col.histogram ? JSON.stringify(col.histogram) : null,
           outliers: col.outliers ? JSON.stringify(col.outliers) : null,
-          valueDistribution: col.valueDistribution
-            ? JSON.stringify(col.valueDistribution)
-            : null,
+          valueDistribution: col.valueDistribution ? JSON.stringify(col.valueDistribution) : null,
           analysisData: JSON.stringify({
             numeric: col.numericAnalysis ?? null,
             categorical: col.categoricalAnalysis ?? null,
@@ -277,11 +200,7 @@ async function profileDatasetAsync(
 
     await prisma.datasetVersion.update({
       where: { id: version.id },
-      data: {
-        rowCount: profile.totalRows,
-        columnCount: profile.totalColumns,
-        encoding: profile.encoding || "utf-8",
-      },
+      data: { rowCount: profile.totalRows, columnCount: profile.totalColumns, encoding: profile.encoding || "utf-8" },
     });
 
     await prisma.dataset.update({
@@ -295,11 +214,21 @@ async function profileDatasetAsync(
         delimiter: profile.delimiter || ",",
       },
     });
+
+    await notifyDatasetProfiled(userId, datasetId, datasetName, profile.qualityScore);
   } catch (error) {
-    console.error("Profiling error:", error);
+    const duration = Math.round(performance.now() - startTime);
+    logger.profiling("failed", {
+      datasetId, duration,
+      error: error instanceof Error ? error : new Error(String(error)),
+    });
+
     await prisma.dataset.update({
       where: { id: datasetId },
       data: { status: "failed" },
     });
+
+    const errorMsg = error instanceof Error ? error.message : "Unknown error";
+    await notifyDatasetFailed(userId, datasetId, datasetName, errorMsg);
   }
 }

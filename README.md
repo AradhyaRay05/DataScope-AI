@@ -1,36 +1,58 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# DataScope AI
 
-## Getting Started
+Dataset Intelligence Platform — Upload, profile, analyze, and visualize datasets.
 
-First, run the development server:
+## Quick Start
 
 ```bash
+npm install
+npm run db:generate
+npm run db:migrate
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Scripts
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Development server |
+| `npm run build` | Production build |
+| `npm run start` | Production server |
+| `npm run lint` | ESLint check |
+| `npm run test` | Run tests |
+| `npm run test:watch` | Watch mode tests |
+| `npm run test:coverage` | Coverage report |
+| `npm run db:migrate` | Run database migrations |
+| `npm run db:generate` | Regenerate Prisma client |
+| `npm run db:studio` | Prisma Studio GUI |
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Environment Variables
 
-## Learn More
+Copy `.env.example` to `.env` and configure:
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+cp .env.example .env
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Required variables:
+- `DATABASE_URL` — SQLite file path or PostgreSQL connection string
+- `JWT_SECRET` — Secret key for JWT signing (min 32 chars)
+- `CSRF_SECRET` — Secret key for CSRF tokens
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Architecture
 
-## Deploy on Vercel
+- **Frontend**: Next.js 16 App Router, React 19, Tailwind CSS v4
+- **Backend**: Next.js API Routes, Prisma ORM
+- **Engine**: Custom TypeScript profiling engines
+- **Auth**: JWT with HttpOnly cookies
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Testing
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+npm run test            # Run all tests
+npm run test:coverage   # With coverage report
+```
+
+## Deployment
+
+See `DEPLOYMENT.md` for production deployment instructions.

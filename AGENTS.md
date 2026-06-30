@@ -8,10 +8,12 @@ DataScope AI is a production-ready Dataset Intelligence Platform built with Next
 
 ### Stack
 - **Frontend**: Next.js 16 App Router, React 19, TypeScript, Tailwind CSS v4, Recharts, Motion
-- **Backend**: Next.js API Routes (REST), Prisma ORM, SQLite
+- **Backend**: Next.js API Routes (REST), Prisma ORM, SQLite (PostgreSQL-ready)
 - **Auth**: JWT (jose) with HttpOnly cookies, bcryptjs password hashing
 - **Profiling Engine**: Custom TypeScript engines (no Python dependencies)
 - **File Processing**: PapaParse (CSV), SheetJS/xlsx (Excel)
+- **Testing**: Vitest
+- **Deployment**: Vercel-ready, GitHub Actions CI/CD
 
 ### Directory Structure
 ```
@@ -19,141 +21,160 @@ src/
 ├── app/                    # Next.js App Router
 │   ├── api/               # REST API routes
 │   │   ├── auth/          # Authentication endpoints
-│   │   ├── datasets/      # Dataset CRUD, upload, compare, report
+│   │   ├── datasets/      # Dataset CRUD, upload, compare, report, analysis
 │   │   ├── dashboard/     # Dashboard statistics
 │   │   ├── notifications/ # User notifications
 │   │   ├── reports/       # Report download/delete
-│   │   ├── search/        # Search + saved searches
+│   │   ├── search/        # Global search + saved searches
 │   │   └── user/          # User settings
 │   ├── auth/              # Auth pages (login, register, forgot-password)
 │   ├── dashboard/         # Dashboard + dataset detail pages
-│   └── layout.tsx         # Root layout with providers
+│   ├── providers.tsx      # Client-side providers (ErrorBoundary, Notifications)
+│   └── layout.tsx         # Root layout
 ├── components/
-│   ├── ui/                # Reusable UI primitives (Button, Input, Card, Modal, Badge, Select, etc.)
-│   ├── charts/            # Visualization components
+│   ├── ui/                # Reusable primitives (Button, Input, Card, Modal, Badge, Select, ErrorBoundary, Skeleton, Notifications)
+│   ├── charts/            # VisualizationStudio component
 │   ├── auth/              # Auth-related components
 │   └── dashboard/         # Dashboard-specific components
-├── engine/                # Data processing engines (NO dependencies on React/Next.js)
+├── engine/                # Pure TypeScript data processing (NO React/Next.js imports)
 │   ├── analyzers/         # Per-type analyzers (numeric, categorical, datetime, boolean, text)
+│   ├── __tests__/         # Engine unit tests
 │   ├── profiler.ts        # Main profiling orchestrator
-│   ├── statistics.ts      # Statistical computation functions
-│   ├── typeDetection.ts   # Column type detection with heuristics
-│   ├── quality.ts         # Data quality scoring (10 factors)
+│   ├── statistics.ts      # Statistical computations
+│   ├── typeDetection.ts   # Column type detection
+│   ├── quality.ts         # 10-factor quality scoring
 │   ├── correlation.ts     # Pearson/Spearman/Kendall + multicollinearity
-│   ├── missingAnalysis.ts # Missing value patterns, heatmap, recommendations
-│   ├── duplicateDetection.ts # Row/column duplicate detection
-│   └── comparison.ts      # Dataset comparison engine
-├── hooks/                 # Custom React hooks (useAuth, useApi)
+│   ├── missingAnalysis.ts # Missing value analysis
+│   ├── duplicateDetection.ts # Row/column duplicates
+│   └── comparison.ts      # Dataset comparison
+├── hooks/                 # React hooks (useAuth, useApi)
 ├── lib/                   # Shared utilities
+│   ├── __tests__/         # Lib unit tests
 │   ├── db.ts              # Prisma client singleton
 │   ├── auth.ts            # JWT sign/verify, session management
-│   ├── validation.ts      # Zod schemas for all API inputs
-│   ├── activity.ts        # Activity logging utility
-│   ├── sanitize.ts        # Input sanitization (HTML escape, filename sanitize)
-│   ├── rateLimit.ts       # In-memory rate limiter
-│   ├── csrf.ts            # CSRF token generation/validation
-│   ├── cors.ts            # CORS configuration
-│   ├── securityHeaders.ts # Security headers (CSP, HSTS, X-Frame-Options)
+│   ├── errors.ts          # AppError class, 41 error codes, error responses
+│   ├── logger.ts          # Structured logging (5 levels, 7 specialized methods)
+│   ├── apiHandler.ts      # API route wrapper (auth, timing, error handling, logging)
+│   ├── uploadHandler.ts   # Upload validation, file save, profiling error handling
+│   ├── dbErrorHandler.ts  # Prisma error mapping
+│   ├── notifications.ts   # In-app notification creator
+│   ├── activity.ts        # Activity logging to database
+│   ├── cache.ts           # In-memory LRU cache with TTL
+│   ├── jobQueue.ts        # Background job processor
+│   ├── queryOptimizer.ts  # Cached database queries
+│   ├── validation.ts      # Zod schemas for all inputs
+│   ├── sanitize.ts        # Input sanitization
+│   ├── rateLimit.ts       # Rate limiting
+│   ├── csrf.ts            # CSRF tokens
+│   ├── cors.ts            # CORS config
+│   ├── securityHeaders.ts # Security headers
 │   ├── rbac.ts            # Role-based access control
-│   └── utils.ts           # General utilities (formatBytes, formatDate, cn)
-├── middleware.ts           # Next.js middleware (rate limiting, security headers, CORS, CSRF)
-└── types/                 # TypeScript type definitions
+│   └── utils.ts           # General utilities
+├── middleware.ts           # Next.js middleware (rate limit, security, CORS, CSRF)
+├── types/index.ts         # TypeScript type definitions
+└── generated/prisma/      # Generated Prisma client (do not edit)
 ```
 
 ## Coding Standards
 
-### General Rules
+### Rules
 1. **No comments** unless explicitly requested
-2. **TypeScript strict mode** — no `any` types, explicit return types on exported functions
-3. **Zod validation** on every API request body and query parameter
-4. **Error handling** — every API route has try/catch with specific error messages
-5. **Authentication** — every protected route calls `getSession()` first
-6. **No `console.log` in production** — use `console.error` for error logging only
+2. **TypeScript strict mode** — no `any`, explicit return types on exports
+3. **Zod validation** on every API request
+4. **AppError** for all API error responses (never raw `NextResponse.json({ error })`)
+5. **`createApiHandler()`** wrapper for all API routes
+6. **`logger`** for all logging (never bare `console.log/error`)
+7. **No secrets in code** — use environment variables
 
-### File Naming
-- Components: PascalCase (`Button.tsx`, `ErrorBoundary.tsx`)
-- Utilities/lib: camelCase (`rateLimit.ts`, `sanitize.ts`)
-- API routes: `route.ts` (Next.js convention)
-- Types: `index.ts` in `types/` directory
-
-### Component Patterns
-- Use `"use client"` directive only for client components
-- Use `forwardRef` for form primitives (Button, Input, Select)
-- Export components from barrel files (`components/ui/index.ts`)
-- Use `font-[family-name:var(--font-instrument-sans)]` for typography
-- Dark theme only: bg `#000000`, text `white`, borders `white/[0.06]`
+### Naming Conventions
+| Type | Convention | Examples |
+|------|-----------|----------|
+| Components | PascalCase | `Button.tsx`, `ErrorBoundary.tsx` |
+| Utilities/lib | camelCase | `rateLimit.ts`, `sanitize.ts` |
+| API routes | `route.ts` | Next.js convention |
+| Types | PascalCase interfaces | `ColumnProfileData`, `QualityBreakdown` |
+| Constants | UPPER_SNAKE | `CACHE_TTL`, `RATE_LIMITS` |
+| Database tables | PascalCase | `Dataset`, `ColumnProfile` |
+| Database columns | camelCase | `qualityScore`, `nullPercentage` |
+| CSS classes | Tailwind utilities | `bg-white/5`, `border-white/10` |
 
 ### API Route Pattern
 ```typescript
-export async function POST(request: NextRequest) {
-  try {
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
-    }
+import { createApiHandler } from "@/lib/apiHandler";
+import { AppError, ErrorCode } from "@/lib/errors";
 
-    const body = await request.json();
-    const parsed = schema.safeParse(body);
-    if (!parsed.success) {
-      return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 });
-    }
+export const POST = createApiHandler(async (request, session, ctx) => {
+  const body = await request.json();
+  const parsed = schema.safeParse(body);
+  if (!parsed.success) throw new AppError(ErrorCode.VALIDATION_ERROR, parsed.error.issues[0].message);
 
-    // Business logic
-
-    return NextResponse.json({ data });
-  } catch (error) {
-    console.error("Route error:", error);
-    return NextResponse.json({ error: "Internal server error." }, { status: 500 });
-  }
-}
+  // Business logic
+  return NextResponse.json({ data });
+});
 ```
 
 ### Engine Pattern
-- Engines are pure TypeScript functions with no React/Next.js imports
-- Every engine exports a main analysis function and its result type
-- Input validation happens in the API route, not the engine
-- Engines return structured objects with summary, details, and recommendations
+- Pure TypeScript, no React/Next.js imports
+- Export main function + result type
+- Input validation in API route, not engine
+- Return structured objects with summary, details, recommendations
+
+### Frontend Pattern
+- `"use client"` only for client components
+- `forwardRef` for form primitives
+- Barrel exports from `components/ui/index.ts`
+- `font-[family-name:var(--font-instrument-sans)]` for typography
+- Dark theme: bg `#000000`, text `white`, borders `white/[0.06]`
+- Use `useApi()` hook for API calls (handles errors, loading, notifications)
+- Use `useNotifications()` for toast messages
 
 ### Database
-- Prisma ORM with SQLite (swap to PostgreSQL by changing `datasource.db`)
-- All relations use `onDelete: Cascade`
-- Index on every foreign key and frequently queried column
-- JSON fields for complex nested data (tags, analysisData, correlationMatrix)
-- Migrations via `npx prisma migrate dev`
+- Prisma ORM with SQLite (PostgreSQL-ready by changing `datasource.db`)
+- All relations: `onDelete: Cascade`
+- Index on every FK and frequently queried column
+- JSON fields for complex nested data
+- Migrations: `npx prisma migrate dev --name <name>`
 
 ### Security
-- JWT tokens in HttpOnly, Secure, SameSite=Lax cookies
-- Passwords hashed with bcryptjs (12 rounds)
-- All user inputs sanitized via `sanitizeString()`
-- Zod schemas for server-side validation
-- Rate limiting via Next.js middleware (IP-based)
-- Security headers: CSP, HSTS, X-Frame-Options, X-Content-Type-Options
-- RBAC via `hasPermission()` checks
+- JWT in HttpOnly, Secure, SameSite cookies
+- bcryptjs (12 rounds) for passwords
+- Zod validation on all inputs
+- `sanitizeString()` on user text
+- Rate limiting via middleware (IP-based)
+- Security headers: CSP, HSTS, X-Frame-Options
+- RBAC via `hasPermission()`
 
-## Build Commands
-
+## Build & Test Commands
 ```bash
-npm run dev          # Development server
-npm run build        # Production build
-npm run lint         # ESLint check
-npx prisma generate  # Regenerate Prisma client
-npx prisma migrate dev --name <name>  # Create migration
+npm run dev              # Development
+npm run build            # Production build
+npm run lint             # ESLint
+npm run test             # Vitest
+npm run test:coverage    # Coverage
+npm run db:migrate       # Prisma migrate
+npm run db:generate      # Prisma generate
 ```
 
-## Adding a New Feature
+## Adding a Feature
+1. Schema: Update `prisma/schema.prisma` → `npm run db:migrate`
+2. Types: Add to `src/types/index.ts`
+3. Validation: Add Zod schema to `src/lib/validation.ts`
+4. Engine: Pure logic in `src/engine/` if needed
+5. API: `route.ts` with `createApiHandler()` wrapper
+6. Frontend: Component with loading/error states, `useApi()` hook
+7. Test: Add test in `__tests__/` directory
+8. Build: `npm run build` to verify
 
-1. **Schema**: Update `prisma/schema.prisma` if new models/fields needed
-2. **Migration**: Run `npx prisma migrate dev --name <name>`
-3. **Engine**: Implement pure logic in `src/engine/` if data processing needed
-4. **Types**: Add interfaces to `src/types/index.ts`
-5. **Validation**: Add Zod schema to `src/lib/validation.ts`
-6. **API Route**: Create `route.ts` in appropriate `src/app/api/` directory
-7. **Frontend**: Create page/component with proper loading states and error handling
-8. **Build**: Run `npm run build` to verify zero errors
+## Performance
+- In-memory cache (`src/lib/cache.ts`) with TTL and LRU eviction
+- Background job queue (`src/lib/jobQueue.ts`) for profiling/reports
+- Cached database queries (`src/lib/queryOptimizer.ts`)
+- Chunked CSV parsing for large files
+- Stratified sampling for datasets >100K rows
+- DB indexes on all query columns
 
-## Testing Approach
-
-- Verify with `npm run build` (TypeScript type checking)
-- Verify with `npm run lint` (ESLint)
-- Manual testing via `npm run dev`
-- No test framework configured yet — prefer build-time verification
+## Deployment
+- Frontend: Vercel (auto-deploy from main branch)
+- Database: PostgreSQL (Neon/Supabase/Railway)
+- CI/CD: GitHub Actions (lint → test → build → deploy)
+- See `DEPLOYMENT.md` for full instructions
