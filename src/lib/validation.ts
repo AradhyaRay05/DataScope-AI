@@ -141,3 +141,70 @@ export const customMetadataSchema = z.object({
     ),
   value: z.string().max(500, "Value must be 500 characters or fewer"),
 });
+
+export const savedSearchSchema = z.object({
+  name: z.string().min(1).max(100),
+  query: z.string().max(200).optional().default(""),
+  filters: z.record(z.string(), z.unknown()).optional().default({}),
+  sort: z.string().max(30).optional().default("newest"),
+});
+
+export const reportSchema = z.object({
+  format: z.enum(["json", "csv", "xlsx", "pdf"]).default("json"),
+  download: z.boolean().optional().default(false),
+});
+
+export const notificationSchema = z.object({
+  id: z.string().uuid().optional(),
+  markAll: z.boolean().optional().default(false),
+});
+
+export const userSettingsSchema = z.object({
+  defaultView: z.enum(["grid", "list"]).optional(),
+  datasetsPerPage: z.number().int().min(1).max(50).optional(),
+  defaultSort: z.string().max(30).optional(),
+  emailNotifications: z.boolean().optional(),
+  theme: z.enum(["dark", "light"]).optional(),
+});
+
+export const advancedSearchSchema = z.object({
+  q: z.string().max(200).optional(),
+  sort: z
+    .enum([
+      "newest",
+      "oldest",
+      "name_asc",
+      "name_desc",
+      "quality_high",
+      "quality_low",
+      "size_high",
+      "size_low",
+      "rows_high",
+      "rows_low",
+      "columns_high",
+      "columns_low",
+    ])
+    .optional()
+    .default("newest"),
+  page: z.coerce.number().int().min(1).optional().default(1),
+  limit: z.coerce.number().int().min(1).max(50).optional().default(12),
+  tags: z.string().optional(),
+  category: z.string().optional(),
+  status: z.string().optional(),
+  project: z.string().optional(),
+  source: z.string().optional(),
+  fileType: z.string().optional(),
+  minQuality: z.coerce.number().min(0).max(100).optional(),
+  maxQuality: z.coerce.number().min(0).max(100).optional(),
+  minRows: z.coerce.number().int().min(0).optional(),
+  maxRows: z.coerce.number().int().min(0).optional(),
+  minColumns: z.coerce.number().int().min(0).optional(),
+  maxColumns: z.coerce.number().int().min(0).optional(),
+  minSize: z.coerce.number().int().min(0).optional(),
+  maxSize: z.coerce.number().int().min(0).optional(),
+  dateFrom: z.string().optional(),
+  dateTo: z.string().optional(),
+  favorites: z.coerce.boolean().optional(),
+  archived: z.coerce.boolean().optional(),
+  columns: z.string().optional(),
+});
