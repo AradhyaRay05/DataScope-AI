@@ -264,6 +264,13 @@ async function profileDatasetAsync(
           valueDistribution: col.valueDistribution
             ? JSON.stringify(col.valueDistribution)
             : null,
+          analysisData: JSON.stringify({
+            numeric: col.numericAnalysis ?? null,
+            categorical: col.categoricalAnalysis ?? null,
+            datetime: col.datetimeAnalysis ?? null,
+            boolean: col.booleanAnalysis ?? null,
+            text: col.textAnalysis ?? null,
+          }),
         },
       });
     }

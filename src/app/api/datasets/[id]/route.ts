@@ -150,6 +150,9 @@ export async function GET(
               valueDistribution: col.valueDistribution
                 ? JSON.parse(col.valueDistribution)
                 : null,
+              analysisData: col.analysisData
+                ? JSON.parse(col.analysisData)
+                : null,
             })),
           }
         : null,

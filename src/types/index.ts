@@ -62,6 +62,8 @@ export interface ColumnProfileData {
   isConstant: boolean;
   isHighCardinality: boolean;
   isIdentifier: boolean;
+  cardinalityRatio?: number;
+
   mean?: number;
   median?: number;
   mode?: string;
@@ -81,20 +83,28 @@ export interface ColumnProfileData {
   negativeCount?: number;
   positiveCount?: number;
   coefficientOfVariation?: number;
+
   minLength?: number;
   maxLength?: number;
   avgLength?: number;
   emptyCount?: number;
   whitespaceCount?: number;
   patternSummary?: string;
+
   dateMin?: string;
   dateMax?: string;
   dateRangeDays?: number;
+
   topValues?: Array<{ value: string; count: number; percentage: number }>;
   histogram?: Array<{ bin: string; count: number }>;
   outliers?: number[];
   valueDistribution?: Record<string, number>;
-  cardinalityRatio?: number;
+
+  numericAnalysis?: import("@/engine/analyzers").NumericAnalysis;
+  categoricalAnalysis?: import("@/engine/analyzers").CategoricalAnalysis;
+  datetimeAnalysis?: import("@/engine/analyzers").DatetimeAnalysis;
+  booleanAnalysis?: import("@/engine/analyzers").BooleanAnalysis;
+  textAnalysis?: import("@/engine/analyzers").TextAnalysis;
 }
 
 export interface DatasetProfileData {

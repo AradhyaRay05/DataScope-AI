@@ -18,6 +18,13 @@ import {
   computeValueDistribution,
 } from "./statistics";
 import { computeQualityScore } from "./quality";
+import {
+  analyzeNumeric,
+  analyzeCategorical,
+  analyzeDatetime,
+  analyzeBoolean,
+  analyzeText,
+} from "./analyzers";
 import type { ColumnProfileData, DatasetProfileData } from "@/types";
 
 function parseCSV(
@@ -166,6 +173,25 @@ export async function profileDataset(
         profile.histogram = computeHistogram(nums);
         profile.outliers = detectOutliers(nums);
         numericColumns[colName] = nums;
+
+        profile.numericAnalysis = analyzeNumeric(nums);
+      }
+    }
+
+    if (
+      (detectedType === "categorical" || detectedType === "boolean") &&
+      nonNullValues.length > 0
+    ) {
+      profile.topValues = computeTopValues(nonNullValues);
+      profile.valueDistribution = computeValueDistribution(nonNullValues);
+
+      if (detectedType === "boolean") {
+        profile.booleanAnalysis = analyzeBoolean(nonNullValues, totalRows);
+      } else {
+        profile.categoricalAnalysis = analyzeCategorical(
+          nonNullValues,
+          totalRows
+        );
       }
     }
 
@@ -180,14 +206,10 @@ export async function profileDataset(
       profile.emptyCount = strStats.emptyCount;
       profile.whitespaceCount = strStats.whitespaceCount;
       profile.patternSummary = strStats.patternSummary;
-    }
 
-    if (
-      (detectedType === "categorical" || detectedType === "boolean") &&
-      nonNullValues.length > 0
-    ) {
-      profile.topValues = computeTopValues(nonNullValues);
-      profile.valueDistribution = computeValueDistribution(nonNullValues);
+      if (!isId) {
+        profile.textAnalysis = analyzeText(nonNullValues, totalRows);
+      }
     }
 
     if (detectedType === "datetime" && nonNullValues.length > 0) {
@@ -203,6 +225,8 @@ export async function profileDataset(
             (1000 * 60 * 60 * 24)
         );
       }
+
+      profile.datetimeAnalysis = analyzeDatetime(nonNullValues, totalRows);
     }
 
     if (detectedType === "mixed" && nonNullValues.length > 0) {

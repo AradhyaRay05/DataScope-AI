@@ -184,6 +184,7 @@ model ColumnProfile {
   histogram       String?
   outliers        String?
   valueDistribution String?
+  analysisData    String?
 
   createdAt       DateTime @default(now())
 
