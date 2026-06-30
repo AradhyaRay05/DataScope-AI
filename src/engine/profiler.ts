@@ -12,12 +12,12 @@ import {
   computeNumericStats,
   computeHistogram,
   detectOutliers,
-  computeCorrelationMatrix,
   computeStringStats,
   computeTopValues,
   computeValueDistribution,
 } from "./statistics";
-import { computeQualityScore } from "./quality";
+import { computeComprehensiveQualityScore } from "./quality";
+import { analyzeCorrelations } from "./correlation";
 import {
   analyzeNumeric,
   analyzeCategorical,
@@ -254,21 +254,32 @@ export async function profileDataset(
 
   let correlationMatrix: Record<string, Record<string, number>> | undefined;
   if (Object.keys(numericColumns).length >= 2) {
-    correlationMatrix = computeCorrelationMatrix(numericColumns);
+    const corrResult = analyzeCorrelations(numericColumns);
+    correlationMatrix = corrResult.matrix.pearson;
   }
 
-  const { score, breakdown } = computeQualityScore({
+  const qualityResult = computeComprehensiveQualityScore({
     totalCells,
     missingCells: totalMissingCells,
     totalRows,
     duplicateRows,
+    totalColumns: columnCount,
     columns: columnProfiles.map((c) => ({
       detectedType: c.detectedType,
       nullPercentage: c.nullPercentage,
       isConstant: c.isConstant,
+      isHighCardinality: c.isHighCardinality,
       columnName: c.columnName,
+      outlierPercentage: c.outliers
+        ? (c.outliers.length / c.nonNullCount) * 100
+        : undefined,
+      uniqueCount: c.uniqueCount,
+      variance: c.variance,
     })),
   });
+
+  const score = qualityResult.overallScore;
+  const breakdown = qualityResult.breakdown;
 
   const memoryUsage = Buffer.byteLength(JSON.stringify(rawRows), "utf-8");
 

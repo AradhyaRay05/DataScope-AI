@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/auth";
+import { compareDatasets } from "@/engine/comparison";
+import { logActivity } from "@/lib/activity";
 
 export async function POST(request: NextRequest) {
   try {
     const session = await getSession();
     if (!session) {
-      return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
+      return NextResponse.json(
+        { error: "Not authenticated." },
+        { status: 401 }
+      );
     }
 
     const body = await request.json();
@@ -67,64 +72,67 @@ export async function POST(request: NextRequest) {
     const columnsA = dsA.versions[0]?.columnProfiles ?? [];
     const columnsB = dsB.versions[0]?.columnProfiles ?? [];
 
-    const colsASet = new Set(columnsA.map((c) => c.columnName));
-    const colsBSet = new Set(columnsB.map((c) => c.columnName));
-    const sharedCols = [...colsASet].filter((c) => colsBSet.has(c));
+    if (!profileA || !profileB) {
+      return NextResponse.json(
+        { error: "Both datasets must be fully profiled before comparison." },
+        { status: 400 }
+      );
+    }
 
-    const onlyInA = [...colsASet].filter((c) => !colsBSet.has(c));
-    const onlyInB = [...colsBSet].filter((c) => !colsASet.has(c));
-
-    const colAMap = new Map(columnsA.map((c) => [c.columnName, c]));
-    const colBMap = new Map(columnsB.map((c) => [c.columnName, c]));
-
-    const typeMismatches = sharedCols
-      .filter((col) => colAMap.get(col)!.detectedType !== colBMap.get(col)!.detectedType)
-      .map((col) => ({
-        column: col,
-        typeA: colAMap.get(col)!.detectedType,
-        typeB: colBMap.get(col)!.detectedType,
-      }));
-
-    const statisticalDiff = sharedCols
-      .filter((col) => colAMap.get(col)!.detectedType === "numeric")
-      .map((col) => {
-        const a = colAMap.get(col)!;
-        const b = colBMap.get(col)!;
-        const stats = ["mean", "median", "std"] as const;
-        return stats
-          .filter((s) => a[s] !== null && b[s] !== null)
-          .map((s) => {
-            const valA = a[s] as number;
-            const valB = b[s] as number;
-            const diff = valB - valA;
-            const pctChange =
-              valA !== 0 ? Math.abs(diff / valA) * 100 : valB !== 0 ? 100 : 0;
-            return {
-              column: col,
-              stat: s,
-              valueA: Math.round(valA * 1000) / 1000,
-              valueB: Math.round(valB * 1000) / 1000,
-              difference: Math.round(diff * 1000) / 1000,
-              percentChange: Math.round(pctChange * 10) / 10,
-            };
-          });
-      })
-      .flat();
-
-    return NextResponse.json({
-      comparison: {
-        datasetA: { id: dsA.id, name: dsA.name },
-        datasetB: { id: dsB.id, name: dsB.name },
-        schemaDiff: { onlyInA, onlyInB, typeMismatches },
-        structuralDiff: {
-          rowDiff: dsB.rowCount - dsA.rowCount,
-          columnDiff: dsB.columnCount - dsA.columnCount,
-          missingA: profileA?.missingPercentage ?? 0,
-          missingB: profileB?.missingPercentage ?? 0,
-        },
-        statisticalDiff,
+    const comparison = compareDatasets({
+      datasetA: {
+        id: dsA.id,
+        name: dsA.name,
+        rowCount: profileA.totalRows,
+        columnCount: profileA.totalColumns,
+        fileSize: dsA.fileSize,
+        encoding: dsA.encoding,
+        delimiter: dsA.delimiter,
+        qualityScore: profileA.qualityScore,
+        missingPercentage: profileA.missingPercentage,
+        duplicatePercentage: profileA.duplicatePercentage,
+        columns: columnsA.map((c) => ({
+          columnName: c.columnName,
+          detectedType: c.detectedType,
+          nullPercentage: c.nullPercentage,
+          mean: c.mean,
+          median: c.median,
+          std: c.std,
+          uniqueCount: c.uniqueCount,
+        })),
+      },
+      datasetB: {
+        id: dsB.id,
+        name: dsB.name,
+        rowCount: profileB.totalRows,
+        columnCount: profileB.totalColumns,
+        fileSize: dsB.fileSize,
+        encoding: dsB.encoding,
+        delimiter: dsB.delimiter,
+        qualityScore: profileB.qualityScore,
+        missingPercentage: profileB.missingPercentage,
+        duplicatePercentage: profileB.duplicatePercentage,
+        columns: columnsB.map((c) => ({
+          columnName: c.columnName,
+          detectedType: c.detectedType,
+          nullPercentage: c.nullPercentage,
+          mean: c.mean,
+          median: c.median,
+          std: c.std,
+          uniqueCount: c.uniqueCount,
+        })),
       },
     });
+
+    await logActivity(
+      session.userId,
+      "dataset.compare",
+      "dataset",
+      datasetA,
+      `Compared ${dsA.name} with ${dsB.name}`
+    );
+
+    return NextResponse.json({ comparison });
   } catch (error) {
     console.error("Compare error:", error);
     return NextResponse.json(
